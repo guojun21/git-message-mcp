@@ -1,23 +1,25 @@
 {
-  "name": "git-message-mcp",
+  "name": "@guojun21/git-message-mcp",
   "module": "index.ts",
   "type": "module",
   "private": false,
+  "bin": {
+    "git-message-mcp": "bin/cli.js"
+  },
   "scripts": {
-    "start": "npx tsx index.ts --stdio"
+    "start": "npx tsx index.ts --stdio",
+    "build": "npx tsc"
   },
   "devDependencies": {
     "@types/bun": "latest",
     "tsx": "^4.21.0"
   },
-  "peerDependencies": {
-    "typescript": "^5.8.3"
-  },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.24.3",
     "axios": "^1.6.0",
     "fastmcp": "^2.2.0",
-    "zod": "^3.25.46"
+    "zod": "^3.25.46",
+    "tsx": "^4.21.0"
   },
   "version": "1.0.0",
   "description": "Git Message MCP - Generate detailed Git commit messages from a folder to clipboard",
