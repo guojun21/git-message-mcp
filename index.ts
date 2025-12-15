@@ -864,7 +864,18 @@ ${diffContent}
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error("🚀 Git Message MCP Server v2.0 started");
+  // Log to a file instead of stderr to avoid breaking MCP protocol
+  fs.appendFileSync(
+    '/tmp/git-message-mcp.log',
+    `[${new Date().toISOString()}] 🚀 Git Message MCP Server v2.0 started\n`
+  );
 }
 
-main().catch(console.error);
+main().catch((err) => {
+  // Log errors to file instead of stderr
+  fs.appendFileSync(
+    '/tmp/git-message-mcp.log',
+    `[${new Date().toISOString()}] ERROR: ${err.message}\n${err.stack}\n`
+  );
+  process.exit(1);
+});
