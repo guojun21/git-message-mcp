@@ -46,9 +46,9 @@ function extractPureCommitMessage(rawContent: string): string {
   const codeBlockMatches = content.match(/```[\w]*\n([\s\S]*?)```/g);
   if (codeBlockMatches && codeBlockMatches.length > 0) {
     // Get the last code block (usually the actual commit message)
-    const lastCodeBlock = codeBlockMatches[codeBlockMatches.length - 1];
+    const lastCodeBlock = codeBlockMatches[codeBlockMatches.length - 1] || "";
     const codeContent = lastCodeBlock.match(/```[\w]*\n([\s\S]*?)```/);
-    if (codeContent) {
+    if (codeContent && codeContent[1]) {
       content = codeContent[1].trim();
     }
   }
@@ -64,7 +64,7 @@ function extractPureCommitMessage(rawContent: string): string {
   let startIndex = -1;
   
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i].trim();
+    const line = (lines[i] || "").trim();
     
     // Skip empty lines
     if (line.length === 0) continue;
@@ -127,7 +127,7 @@ function extractPureCommitMessage(rawContent: string): string {
   // Find the actual commit message
   // Try to find message starting with type (feature, fix, etc.)
   let commitMessageMatch = content.match(/((?:feature|fix|refactor|perf|docs|test|chore|style|revert):\s+.*)/is);
-  if (commitMessageMatch) {
+  if (commitMessageMatch && commitMessageMatch[1]) {
     content = commitMessageMatch[1];
   }
   
@@ -144,10 +144,11 @@ function extractPureCommitMessage(rawContent: string): string {
 async function generateMessageWithAI(
   content: string,
   model: string,
-  messageType: "detailed" | "concise" | "changelog"
+  messageType: "detailed" | "concise" | "changelog",
+  projectPath: "ruicheng.gu" | "oasmet" | "unknown" = "unknown"
 ): Promise<string> {
   try {
-    const prompt = buildPrompt(content, messageType);
+    const prompt = buildPrompt(content, messageType, projectPath);
 
     const response = await axios.post(
       `${POE_API_BASE_URL}/chat/completions`,
@@ -180,11 +181,241 @@ async function generateMessageWithAI(
   }
 }
 
+function detectProjectPath(folderPath: string): "ruicheng.gu" | "oasmet" | "unknown" {
+  if (folderPath.includes("ruicheng.gu")) {
+    return "ruicheng.gu";
+  }
+  if (folderPath.includes("oasmet")) {
+    return "oasmet";
+  }
+  return "unknown";
+}
+
 function buildPrompt(
   gitInfo: string,
-  messageType: "detailed" | "concise" | "changelog"
+  messageType: "detailed" | "concise" | "changelog",
+  projectPath: "ruicheng.gu" | "oasmet" | "unknown" = "unknown"
 ): string {
-  const commitMessageStandard = `# Commit Message 规范
+  // ruicheng.gu 路径使用 SPLN 前缀规范，oasmet 路径使用原规范
+  const commitMessageStandard = projectPath === "ruicheng.gu" ? 
+  `# Commit Message 规范 - SPLN 前缀版本
+
+> 基于 Conventional Commits 规范 + Shopee 团队实践，确保每次提交都能清晰表达变更意图、方便代码追溯和自动化工具处理。
+
+## 0. 🚨 最重要的规则：需求编号 + 中英双语
+
+**Shopee 是外企，团队成员来自不同国家，Commit Message 必须有需求编号和中英双语！**
+
+\`\`\`
+# ✅ 正确格式
+[SPLN-XXXXX] <type>: <English subject>
+
+[SPLN-XXXXX] <类型>: <中文主题>
+
+<English body>
+
+<中文 body>
+\`\`\`
+
+**这不是可选的，是强制的！** 不写需求编号和双语的 Commit 会被打回。
+
+---
+
+## 1. 核心格式
+
+\`\`\`
+[SPLN-XXXXX] <type>: <English subject>
+
+[SPLN-XXXXX] <类型>: <中文主题>
+
+<body - 中英双语>
+
+<footer>
+\`\`\`
+
+### 必填部分
+
+| 部分 | 说明 | 示例 |
+|------|------|------|
+| \`[SPLN-XXXXX]\` | 需求编号，**必须** | \`[SPLN-42669]\` |
+| \`<type>\` | 变更类型，见下方列表 | \`feature\`、\`fix\` |
+| \`<English subject>\` | 英文简短描述 | \`Add LineId field to weight dimension DTOs\` |
+| \`<中文主题>\` | 中文简短描述 | \`在重量维度 DTO 中添加 LineId 字段\` |
+
+### 可选部分
+
+| 部分 | 说明 |
+|------|------|
+| \`<body>\` | 详细描述变更内容、背景、影响范围（**中英双语**） |
+| \`<footer>\` | 关联信息、Breaking Changes 等 |
+
+---
+
+## 2. Type 类型列表
+
+| Type | 说明 | 使用场景 |
+|------|------|----------|
+| \`feature\` | 新功能 | 新增接口、字段、业务逻辑 |
+| \`fix\` | Bug 修复 | 修复线上/测试环境问题 |
+| \`refactor\` | 重构 | 不改变功能的代码重构 |
+| \`perf\` | 性能优化 | 提升性能的改动 |
+| \`docs\` | 文档 | 仅修改文档 |
+| \`test\` | 测试 | 添加/修改测试用例 |
+| \`chore\` | 杂项 | 构建、依赖、配置等非业务改动 |
+| \`style\` | 格式 | 代码格式化，不影响逻辑 |
+| \`revert\` | 回滚 | 回滚之前的提交 |
+
+---
+
+## 3. Subject 主题规范
+
+### 3.1 需求编号：SPLN 前缀必须！
+
+**🚨 需求编号是强制的，不能省略！**
+
+\`\`\`
+# ✅ 正确：有需求编号
+[SPLN-42669] feature: Add LineId field to weight dimension DTOs
+
+# ❌ 错误：没有需求编号
+feature: Add LineId field to weight dimension DTOs
+\`\`\`
+
+### 3.2 语言选择：中英双语必须！
+
+**🚨 中英双语是强制要求，不是可选！**
+
+\`\`\`
+# ✅ 正确：中英双语
+[SPLN-42669] feature: Add LineId field to weight dimension DTOs
+
+[SPLN-42669] 功能: 在重量维度 DTO 中添加 LineId 字段
+
+# ❌ 错误：只有英文
+[SPLN-42669] feature: Add LineId field to weight dimension DTOs
+
+# ❌ 错误：只有中文
+[SPLN-42669] 功能: 添加 LineId 字段
+\`\`\`
+
+### 3.3 格式要求
+
+1. **需求编号首先**：\`[SPLN-XXXXX]\` 前缀
+2. **首字母大写**（英文）
+3. **不加句号**
+4. **祈使语气**：用 \`Add\` 而不是 \`Added\` 或 \`Adds\`
+5. **长度限制**：50 字符以内（不含需求编号）
+
+\`\`\`
+# ❌ 错误
+[SPLN-42669] feature: added lineId field.
+[SPLN-42669] feature: This commit adds the LineId field to enable PIS to determine correct BEST API partnerId
+
+# ✅ 正确
+[SPLN-42669] feature: Add LineId field to weight dimension DTOs
+\`\`\`
+
+### 3.4 常用动词
+
+| 动词 | 场景 |
+|------|------|
+| \`Add\` | 新增功能/字段/文件 |
+| \`Remove\` | 删除功能/字段/文件 |
+| \`Update\` | 更新已有功能 |
+| \`Fix\` | 修复问题 |
+| \`Refactor\` | 重构代码 |
+| \`Optimize\` | 优化性能 |
+| \`Support\` | 支持新特性 |
+
+---
+
+## 4. 完整示例（中英双语 + 需求编号）
+
+### 4.1 简单变更
+
+\`\`\`
+[SPLN-42669] fix: Correct weight unit conversion in PIS request
+
+[SPLN-42669] 修复: 修正 PIS 请求中的重量单位转换
+
+Fix the weight unit conversion error in PIS request. The divisor should be 1000 when converting from grams to kilograms.
+
+修复 PIS 请求中重量单位转换错误，从克转换为千克时除数应为 1000。
+\`\`\`
+
+### 4.2 中等变更
+
+\`\`\`
+[SPLN-42669] feature: Add LineId field to weight dimension DTOs
+
+[SPLN-42669] 功能: 在重量维度 DTO 中添加 LineId 字段
+
+## Summary / 概述
+
+This commit adds the \`LineId\` field to the weight dimension data transfer flow, enabling PIS to determine the correct BEST API \`partnerId\`.
+
+本次提交在重量维度数据传递流程中添加 \`LineId\` 字段，使 PIS 能够根据线路标识符确定正确的 BEST API partnerId。
+
+## Changes / 变更内容
+
+### DTO Layer / DTO 层
+- \`dto/fulfillment_dto/weight.go\`: Added \`LineId\` field
+- \`dto/fulfillment_dto/weight.go\`: 添加 \`LineId\` 字段
+
+### Business Logic / 业务逻辑层
+- \`internal/domain/transform_domain/transform_service.go\`: Pass \`LineId\` from cache
+- \`internal/domain/transform_domain/transform_service.go\`: 从缓存传递 \`LineId\`
+
+Related: SPLN-42669
+Downstream: PIS
+\`\`\`
+
+---
+
+## 5. 常见错误
+
+### ❌ 没有需求编号（致命错误！）
+
+\`\`\`
+feature: Add LineId field
+\`\`\`
+
+### ❌ 没有中英双语
+
+\`\`\`
+[SPLN-42669] feature: Add LineId field
+\`\`\`
+
+### ❌ Type 不规范
+
+\`\`\`
+[SPLN-42669] feat: Add LineId field    # 应该用 feature，不是 feat
+\`\`\`
+
+### ❌ 用过去时
+
+\`\`\`
+[SPLN-42669] feature: Added LineId field
+\`\`\`
+
+---
+
+## 6. Code Review 检查清单
+
+1. ✅ **有需求编号** \`[SPLN-XXXXX]\`（必须！）
+2. ✅ **中英双语**（必须！）
+3. ✅ Type 使用正确
+4. ✅ Subject 简洁明了，50 字符以内
+5. ✅ 祈使语气，首字母大写，无句号
+6. ✅ 复杂变更有 Body 说明（中英双语）
+
+---
+
+## 7. 一句话总结
+
+> **Shopee 外企环境，Commit Message 必须有需求编号和中英双语！**
+> 需求编号让人能追溯背景，Type 让人快速分类，Subject 让人一眼知道改了什么，Body 让人理解为什么这么改。
+` : `# Commit Message 规范
 
 > 基于 Conventional Commits 规范 + 团队实践总结，确保每次提交都能清晰表达变更意图、方便代码追溯和自动化工具处理。
 
@@ -454,14 +685,26 @@ feature: Add LineId field.
 > 英文方便国际团队协作，中文方便中国团队快速理解业务背景。  
 > Type 让人快速分类，Subject 让人一眼知道改了什么，Body 让人理解为什么这么改。`;
 
-  const basePrompt = `You are an expert software engineer specializing in writing Git commit messages following the team standards.
+  const basePromptPrefix = projectPath === "ruicheng.gu" ?
+  `You are an expert software engineer specializing in writing Git commit messages following the SPLN Shopee team standards.
+
+**CRITICAL REQUIREMENTS:**
+1. **MANDATORY Requirement Number**: All commit messages MUST start with [SPLN-XXXXX]
+2. **MANDATORY Bilingual (English + Chinese)**: All commit messages MUST be in both English and Chinese
+3. **Format**: [SPLN-XXXXX] <type>: <English subject> followed by [SPLN-XXXXX] <类型>: <中文主题>
+4. **Output ONLY the commit message**: No explanations, no "Here's...", no "I'll generate...", just the pure commit message text
+
+Here is the Commit Message Standard you MUST follow:` :
+  `You are an expert software engineer specializing in writing Git commit messages following the team standards.
 
 **CRITICAL REQUIREMENTS:**
 1. **MANDATORY Bilingual (English + Chinese)**: All commit messages MUST be in both English and Chinese
 2. **Format**: <type>: <English subject> followed by <类型>: <中文主题>
 3. **Output ONLY the commit message**: No explanations, no "Here's...", no "I'll generate...", just the pure commit message text
 
-Here is the Commit Message Standard you MUST follow:
+Here is the Commit Message Standard you MUST follow:`;
+
+  const basePrompt = `${basePromptPrefix}
 
 ${commitMessageStandard}
 
@@ -476,7 +719,7 @@ ${gitInfo}
 1. Analyze the git changes carefully
 2. Generate a commit message STRICTLY following the standard above
 3. **OUTPUT ONLY THE COMMIT MESSAGE TEXT** - no explanations, no markdown code blocks, no "Here's...", no "I'll...", just the pure commit message
-4. Ensure BOTH English and Chinese versions are present
+${projectPath === "ruicheng.gu" ? "4. Ensure SPLN requirement number and BOTH English and Chinese versions are present" : "4. Ensure BOTH English and Chinese versions are present"}
 5. Use appropriate type (feature, fix, refactor, perf, docs, test, chore, style, revert)
 6. Keep subject line under 50 characters
 7. Use imperative mood, capitalize first letter, no period
@@ -545,9 +788,9 @@ function getGitDiffStats(folderPath: string): {
     const deleteMatch = lastLine.match(/(\d+)\s+deletions?\(\-\)/);
 
     return {
-      filesChanged: fileMatch ? parseInt(fileMatch[1]) : 0,
-      insertions: insertMatch ? parseInt(insertMatch[1]) : 0,
-      deletions: deleteMatch ? parseInt(deleteMatch[1]) : 0,
+      filesChanged: fileMatch && fileMatch[1] ? parseInt(fileMatch[1]) : 0,
+      insertions: insertMatch && insertMatch[1] ? parseInt(insertMatch[1]) : 0,
+      deletions: deleteMatch && deleteMatch[1] ? parseInt(deleteMatch[1]) : 0,
       summary: lastLine,
     };
   } catch {
@@ -762,6 +1005,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     try {
       const folderName = path.basename(folderPath);
+      const projectPath = detectProjectPath(folderPath);
       const stats = getGitDiffStats(folderPath);
       const changedFiles = getChangedFiles(folderPath);
       const diffContent = getGitDiffContent(folderPath);
@@ -787,19 +1031,20 @@ Insertions: +${stats.insertions}
 Deletions: -${stats.deletions}
 
 Changed Files:
-${changedFiles.map((f) => `- ${f}`).join("\n")}
+${changedFiles.map((f) => `- ${f || ""}`).join("\n")}
 
 Recent Commits:
-${recentCommits.map((c) => `- ${c}`).join("\n")}
+${recentCommits.map((c) => `- ${c || ""}`).join("\n")}
 
 Git Diff Preview:
-${diffContent}
+${diffContent || ""}
 `;
 
       let aiGeneratedMessage = await generateMessageWithAI(
         aiContext,
         model,
-        messageType
+        messageType,
+        projectPath
       );
 
       // Ensure the message is pure (no extra content)
